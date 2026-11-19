@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+
+# get hostname
+host="${HOSTNAME:-$(hostname 2>/dev/null)}"
+host="${host:-Unknown Host}"
+
+# get distribution
+if [[ -r /etc/os-release ]]; then
+  source /etc/os-release
+  distro="${PRETTY_NAME:-Unknown Distribution}"
+elif command -v hostnamectl >/dev/null 2>&1; then
+  distro=$(hostnamectl 2>/dev/null | sed -n 's/^[[:space:]]*Operating System:[[:space:]]*//p')
+  distro="${distro:-Unknown Distribution}"
+else
+  distro="Unknown Distribution"
+fi
+
+# get kernel
+kernel=$(uname -sr 2>/dev/null)
+kernel="${kernel:-Unknown Kernel}"
+
+# get uptime
+up=$(uptime -p 2>/dev/null)
+up="${up/#up/Uptime:}"
+up="${up:-Uptime Unavailable}"
+
+# get number of logged in sessions
+users=$(who 2>/dev/null | wc -l)
+
+# print the hostname banner
+if command -v figlet >/dev/null 2>&1; then
+  if command -v lolcat >/dev/null 2>&1; then
+    figlet "$host" | lolcat -f 2>/dev/null
+  # Debian puts lolcat in /usr/games, which is not in root's path
+  elif [[ -x /usr/games/lolcat ]]; then
+    figlet "$host" | /usr/games/lolcat -f 2>/dev/null
+  else
+    figlet "$host"
+  fi
+else
+  printf '*** %s ***\n' "$host"
+fi
+
+# print system info
+printf '%s, %s\n' "$distro" "$kernel"
+printf '%s. %s logged in session(s).\n\n' "$up" "$users"

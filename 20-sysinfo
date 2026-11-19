@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+
+# set colours
+green=$'\e[1;32m'
+yellow=$'\e[1;33m'
+red=$'\e[1;31m'
+reset=$'\e[0m'
+
+# cpu load alert levels (load divided by CPU count)
+load_warn_lvl=0.7
+load_alert_lvl=0.9
+
+# memory alert levels (% used)
+mem_warn_lvl=70
+mem_alert_lvl=90
+
+# swap alert levels (% used)
+swp_warn_lvl=70
+swp_alert_lvl=90
+
+# get cpu count
+cores=$(nproc 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null)
+cores="${cores:-1}"
+
+# get load averages
+read -r load1 load5 load15  _ < /proc/loadavg || exit 1
+
+# set colour for load averages
+get_load_colour() {
+  local load=$1
+  if awk -v l="$load" -v c="$cores" -v t="$load_alert_lvl" 'BEGIN {exit !(l/c >= t)}'; then
+    printf '%s' "$red"
+  elif awk -v l="$load" -v c="$cores" -v t="$load_warn_lvl" 'BEGIN {exit !(l/c >= t)}'; then
+    printf '%s' "$yellow"
+  else
+    printf '%s' "$green"
+  fi
+}
+
+load1_colour=$(get_load_colour "$load1")
+load5_colour=$(get_load_colour "$load5")
+load15_colour=$(get_load_colour "$load15")
+
+# get memory and swap usage
+free_output=$(free -h 2>/dev/null)
+read -r mem_used mem_avail mem_total  < <(awk '/^Mem:/ {print $3,$7,$2}' <<< "$free_output")
+read -r swp_used swp_avail swp_total  < <(awk '/^Swap:/ {print $3,$4,$2}' <<< "$free_output")
+
+# set colour for memory usage
+mem_pc_used=$(free | awk '/^Mem:/ {print $3/$7 * 100.0}')
+if (( $(bc -l <<< "$mem_pc_used >= $mem_alert_lvl") )); then
+  mem_colour="${red}"
+elif (( $(bc -l <<< "$mem_pc_used >= $mem_warn_lvl") )); then
+  mem_colour="${yellow}"
+else
+  mem_colour="${green}"
+fi
+
+# set colour for swap usage
+swp_pc_used=$(free | awk '/^Swap:/ {
+  if ($2 == 0) {
+    print 100
+  } else {
+    print $3/$4 * 100.0
+  }
+}')
+
+if (( $(bc -l <<< "$swp_pc_used >= $swp_alert_lvl") )); then
+  swp_colour="${red}"
+elif (( $(bc -l <<< "$swp_pc_used >= $swp_warn_lvl") )); then
+  swp_colour="${yellow}"
+else
+  swp_colour="${green}"
+fi
+
+# print output
+printf 'CPU Load......: %s (1m), %s (5m), %s (15m) %s\n' "${load1_colour}${load1}${reset}" "${load5_colour}${load5}${reset}" "${load15_colour}${load15}${reset}" "($cores cores)"
+printf 'Memory........: %s used, %s avail, %s total\n' "${mem_colour}${mem_used}${reset}" "${mem_colour}${mem_avail}${reset}" "${green}${mem_total}${reset}"
+printf 'Swap..........: %s used, %s avail, %s total\n\n' "${swp_colour}${swp_used}${reset}" "${swp_colour}${swp_avail}${reset}" "${green}${swp_total}${reset}"

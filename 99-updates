@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+
+#colours
+red=$'\e[1;31m'
+yellow=$'\e[1;33m'
+reset=$'\e[0m'
+
+# get available updates
+# debian/ubuntu
+if command -v apt-get >/dev/null 2>&1; then
+  updates=$(apt-get --just-print upgrade 2>/dev/null)
+  num_updates=$(grep -c 'Inst' <<< "$updates")
+  num_security=$(grep -c -- '^Inst.*-security.*' <<< "$updates")
+  # reboot required?
+  if [[ -f /var/run/reboot-required ]]; then
+    reboot=true
+  fi
+
+# fedora/redhat
+elif command -v dnf >/dev/null 2>&1; then
+  updates=$(dnf updateinfo list -q 2>/dev/null)
+  num_updates=$(grep -c "-" <<< "$updates")
+  num_security=$(grep -c "security" <<< "$updates")
+  # reboot required? (requires yum-utils)
+  dnf needs-restarting -r >/dev/null 2>&1
+  if [[ "$?" == 1 ]]; then
+    reboot=true
+  fi
+
+# arch
+elif command -v checkupdates >/dev/null 2>&1; then
+  num_updates=$(checkupdates 2> /dev/null | wc -l)
+  if command -v yay >/dev/null 2>&1; then
+    updates_AUR=$(yay -Qum 2> /dev/null | wc -l)
+    num_updates=$((num_updates + updates_AUR))
+  fi
+else
+  num_updates=0
+fi
+
+# alert if updates are available
+if (( num_updates > 0 )); then
+  printf '%s%s package updates available ' "${yellow}" "$num_updates"
+  if  (( "$num_security" > 0 )); then
+    printf '(%s security)%s\n' "$num_security" "${reset}"
+  else
+    printf '%s\n' "${reset}"
+  fi
+fi
+
+# alert if system reboot is required
+if [[ $reboot == true ]]; then
+  printf '%s! System reboot required%s\n\n' "${red}" "${reset}"
+elif (( num_updates > 0 )) ; then
+  printf '\n'
+fi
